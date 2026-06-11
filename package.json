@@ -1,0 +1,19 @@
+{
+  "name": "pi-zellij-editor",
+  "version": "0.1.0",
+  "description": "Edit pi prompts in a live zellij pane without blocking pi's TUI.",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "zellij",
+    "editor"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}
