@@ -195,14 +195,14 @@ async function openZellijPaneAndWait(options: {
 	args.push("--close-on-exit");
 	args.push("--block-until-exit");
 	// `--` separates zellij flags from the command to run in the new pane.
-	// Zellij executes argv[0] with the remaining args as its argv (no shell),
-	// so we run the user's editor command via `sh -c` to allow command strings
-	// with arguments and quoted paths (e.g. "code --wait", temp files with spaces).
-	const paneShellCommand = `exec ${options.editorCommand} ${shellQuote(options.tempFile)}`;
-	args.push("--");
-	args.push("sh");
-	args.push("-c");
-	args.push(paneShellCommand);
+	// Zellij runs argv[0] with the rest as its argv (no shell involved), so
+	// we parse the editor command into a program + argv ourselves. This keeps
+	// the extension shell-agnostic — it works on Linux (zellij's default pane
+	// shell) and on Windows (where there is no `sh` in PATH by default), and
+	// it lets us pass Windows backslash paths with spaces through argv safely.
+	const { program, args: editorArgs } = parseCommand(options.editorCommand);
+	editorArgs.push(options.tempFile);
+	args.push("--", program, ...editorArgs);
 
 	return runProcess("zellij", args);
 }
@@ -287,13 +287,64 @@ function parseEnvBoolean(value: string | undefined): boolean | undefined {
 	return undefined;
 }
 
-function shellQuote(value: string): string {
-	return `'${value.replace(/'/g, `'\\''`)}'`;
+/**
+ * Split a user-supplied editor command string into a program + argv, the way
+ * a POSIX shell would tokenize it. Supports single- and double-quoted runs;
+ * whitespace outside quotes separates tokens. Backslashes are literal (not
+ * escape characters) so Windows paths round-trip cleanly when quoted or
+ * space-free; paths with spaces must be quoted.
+ *
+ * Examples:
+ *   "nvim"                                 -> { program: "nvim", args: [] }
+ *   "code --wait"                          -> { program: "code", args: ["--wait"] }
+ *   'nvim -c "set ft=markdown"'            -> { program: "nvim", args: ["-c", "set ft=markdown"] }
+ *   '"C:\\Program Files\\Neovim\\bin\\nvim.exe"' -> { program: "C:\\Program Files\\Neovim\\bin\\nvim.exe", args: [] }
+ */
+function parseCommand(command: string): { program: string; args: string[] } {
+	const tokens: string[] = [];
+	let current = "";
+	let inQuote: '"' | "'" | null = null;
+	let hasCurrent = false;
+
+	const flush = () => {
+		if (hasCurrent) {
+			tokens.push(current);
+			current = "";
+			hasCurrent = false;
+		}
+	};
+
+	for (let i = 0; i < command.length; i++) {
+		const ch = command[i];
+		if (inQuote) {
+			if (ch === inQuote) {
+				inQuote = null;
+			} else {
+				current += ch;
+				hasCurrent = true;
+			}
+			continue;
+		}
+		if (ch === '"' || ch === "'") {
+			inQuote = ch as '"' | "'";
+			continue;
+		}
+		if (/\s/.test(ch)) {
+			flush();
+			continue;
+		}
+		current += ch;
+		hasCurrent = true;
+	}
+	flush();
+
+	const [program, ...args] = tokens;
+	return { program: program ?? "", args };
 }
 
 function runProcess(command: string, args: string[]): Promise<ProcessResult> {
 	// No shell: zellij's CLI expects args verbatim, and the editor invocation
-	// is wrapped in `sh -c` by the caller when shell parsing is required.
+	// is parsed into program + argv by the caller so we never need a shell.
 	const child = spawn(command, args, {
 		stdio: ["ignore", "ignore", "pipe"],
 	});

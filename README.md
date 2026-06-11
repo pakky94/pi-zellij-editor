@@ -17,9 +17,33 @@ which provides the same workflow for tmux.
 ## Requirements
 
 - pi
-- zellij (0.39+, for the `--floating` and `--block-until-exit` flags)
+- zellij
+  - Linux/macOS: 0.39+ (for `--block-until-exit`)
+  - Windows: 0.44+ (native Windows support landed in 0.44.0)
 - A terminal editor. Defaults to `$VISUAL`, then `$EDITOR`, then `nvim`. Override
   with the `editor` option (see [Configuration](#configuration)).
+
+## Platform notes
+
+### Windows
+
+On Windows, zellij uses ConPTY and runs the editor as a direct process spawn
+(no shell in between). The extension passes the editor command and file path
+through `zellij action new-pane` as a structured argv list, so the editor sees
+the file path as a normal argument regardless of whether your temp directory
+lives at `C:\Users\You\AppData\Local\Temp\...` (with backslashes) or whether
+your username contains spaces.
+
+If your `editor` config points at a Windows path with spaces, quote it:
+
+```json
+{
+  "editor": "\"C:\\Program Files\\Neovim\\bin\\nvim.exe\""
+}
+```
+
+zellij itself can be configured with `default_shell` in `~/.config/zellij/config.kdl`
+if you want PowerShell or pwsh as the default shell for new panes.
 
 ## Installation
 
